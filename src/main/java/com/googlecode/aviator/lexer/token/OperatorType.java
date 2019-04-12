@@ -16,7 +16,7 @@
 package com.googlecode.aviator.lexer.token;
 
 import java.util.Map;
-import com.googlecode.aviator.exception.ExpressionRuntimeException;
+import com.googlecode.aviator.exception.IllegalArityException;
 import com.googlecode.aviator.runtime.type.AviatorBoolean;
 import com.googlecode.aviator.runtime.type.AviatorJavaType;
 import com.googlecode.aviator.runtime.type.AviatorObject;
@@ -79,7 +79,9 @@ public enum OperatorType {
 
   NEG("-neg", 1),
 
-  TERNARY("?:", 3);
+  TERNARY("?:", 3),
+
+  ASSIGNMENT("=", 2);
 
   public final String token;
 
@@ -93,7 +95,8 @@ public enum OperatorType {
 
   public AviatorObject eval(AviatorObject[] args, Map<String, Object> env) {
     if (args.length < this.operandCount) {
-      throw new ExpressionRuntimeException("There are not enough operands for " + this);
+      throw new IllegalArityException("Expect " + this.operandCount + " parameters for "
+          + this.name() + ", but have " + args.length + " arguments.");
     }
     switch (this) {
       case ADD:
@@ -102,6 +105,10 @@ public enum OperatorType {
         return args[0].sub(args[1], env);
       case MOD:
         return args[0].mod(args[1], env);
+      case ASSIGNMENT:
+        // TODO check type?
+        env.put((String) args[0].getValue(env), args[1].getValue(env));
+        return args[1];
       case DIV:
         return args[0].div(args[1], env);
       case MULT:

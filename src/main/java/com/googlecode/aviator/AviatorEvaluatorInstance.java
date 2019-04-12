@@ -28,12 +28,13 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.FutureTask;
+import com.googlecode.aviator.Options.Value;
 import com.googlecode.aviator.asm.Opcodes;
 import com.googlecode.aviator.code.CodeGenerator;
 import com.googlecode.aviator.code.OptimizeCodeGenerator;
 import com.googlecode.aviator.code.asm.ASMCodeGenerator;
 import com.googlecode.aviator.exception.CompileExpressionErrorException;
-import com.googlecode.aviator.exception.ExpressionRuntimeException;
+import com.googlecode.aviator.exception.ExpressionNotFoundException;
 import com.googlecode.aviator.lexer.ExpressionLexer;
 import com.googlecode.aviator.lexer.token.OperatorType;
 import com.googlecode.aviator.parser.AviatorClassLoader;
@@ -47,16 +48,24 @@ import com.googlecode.aviator.runtime.function.math.MathRoundFunction;
 import com.googlecode.aviator.runtime.function.math.MathSinFunction;
 import com.googlecode.aviator.runtime.function.math.MathSqrtFunction;
 import com.googlecode.aviator.runtime.function.math.MathTanFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqAddFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqCompsitePredFunFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqCompsitePredFunFunction.LogicOp;
 import com.googlecode.aviator.runtime.function.seq.SeqCountFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqEveryFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqFilterFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqGetFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqIncludeFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqMakePredicateFunFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqMapFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqMaxFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqMinFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqNewListFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqNewMapFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqNewSetFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqNotAnyFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqReduceFunction;
+import com.googlecode.aviator.runtime.function.seq.SeqRemoveFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqSomeFunction;
 import com.googlecode.aviator.runtime.function.seq.SeqSortFunction;
 import com.googlecode.aviator.runtime.function.string.StringContainsFunction;
@@ -73,7 +82,10 @@ import com.googlecode.aviator.runtime.function.system.BinaryFunction;
 import com.googlecode.aviator.runtime.function.system.BooleanFunction;
 import com.googlecode.aviator.runtime.function.system.Date2StringFunction;
 import com.googlecode.aviator.runtime.function.system.DoubleFunction;
+import com.googlecode.aviator.runtime.function.system.IdentityFunction;
 import com.googlecode.aviator.runtime.function.system.LongFunction;
+import com.googlecode.aviator.runtime.function.system.MaxFunction;
+import com.googlecode.aviator.runtime.function.system.MinFunction;
 import com.googlecode.aviator.runtime.function.system.NowFunction;
 import com.googlecode.aviator.runtime.function.system.PrintFunction;
 import com.googlecode.aviator.runtime.function.system.PrintlnFunction;
@@ -81,6 +93,7 @@ import com.googlecode.aviator.runtime.function.system.RandomFunction;
 import com.googlecode.aviator.runtime.function.system.StrFunction;
 import com.googlecode.aviator.runtime.function.system.String2DateFunction;
 import com.googlecode.aviator.runtime.function.system.SysDateFunction;
+import com.googlecode.aviator.runtime.function.system.TupleFunction;
 import com.googlecode.aviator.runtime.type.AviatorBoolean;
 import com.googlecode.aviator.runtime.type.AviatorFunction;
 import com.googlecode.aviator.runtime.type.AviatorNil;
@@ -104,8 +117,12 @@ public final class AviatorEvaluatorInstance {
    */
   public int bytecodeVersion = Opcodes.V1_6;
 
-  private final ConcurrentHashMap<Options, Object> options =
-      new ConcurrentHashMap<Options, Object>();
+  /**
+   * Options
+   */
+  private volatile Map<Options, Value> options = new IdentityHashMap<Options, Value>();
+
+
   /** function loader list */
   private List<FunctionLoader> functionLoaders;
 
@@ -152,7 +169,9 @@ public final class AviatorEvaluatorInstance {
     if (!opt.isValidValue(val)) {
       throw new IllegalArgumentException("Invalid value for option:" + opt.name());
     }
-    options.put(opt, val);
+    Map<Options, Value> newOpts = new IdentityHashMap<>(this.options);
+    newOpts.put(opt, opt.intoValue(val));
+    this.options = newOpts;
   }
 
 
@@ -162,13 +181,27 @@ public final class AviatorEvaluatorInstance {
    * @param opt
    * @return
    */
+  @Deprecated
   @SuppressWarnings("unchecked")
   public <T> T getOption(Options opt) {
-    Object val = options.get(opt);
+    Value val = options.get(opt);
     if (val == null) {
-      val = opt.getDefaultValue();
+      val = opt.getDefaultValueObject();
     }
-    return (T) val;
+
+    return (T) opt.intoObject(val);
+  }
+
+  /**
+   * Returns the current evaluator option value union, returns null if missing.
+   *
+   * @param opt
+   * @return
+   */
+  public Value getOptionValue(Options opt) {
+    Value val = options.get(opt);
+    assert (val != null);
+    return val;
   }
 
 
@@ -198,8 +231,12 @@ public final class AviatorEvaluatorInstance {
    *
    * @return
    */
-  public ConcurrentHashMap<Options, Object> getOptions() {
-    return options;
+  public Map<Options, Object> getOptions() {
+    Map<Options, Object> ret = new HashMap<>();
+    for (Map.Entry<Options, Value> entry : this.options.entrySet()) {
+      ret.put(entry.getKey(), entry.getKey().intoObject(entry.getValue()));
+    }
+    return ret;
   }
 
 
@@ -284,6 +321,10 @@ public final class AviatorEvaluatorInstance {
     addFunction(new BinaryFunction(OperatorType.BIT_OR));
     addFunction(new BinaryFunction(OperatorType.BIT_XOR));
     addFunction(new BinaryFunction(OperatorType.BIT_NOT));
+    addFunction(new TupleFunction());
+    addFunction(new MinFunction());
+    addFunction(new MaxFunction());
+    addFunction(new IdentityFunction());
 
     // load string lib
     addFunction(new StringContainsFunction());
@@ -309,6 +350,14 @@ public final class AviatorEvaluatorInstance {
     addFunction(new MathTanFunction());
 
     // seq lib
+    addFunction(new SeqNewListFunction());
+    addFunction(new SeqNewMapFunction());
+    addFunction(new SeqNewSetFunction());
+    addFunction(new SeqAddFunction());
+    addFunction(new SeqRemoveFunction());
+    addFunction(new SeqGetFunction());
+    addFunction(new SeqMinFunction());
+    addFunction(new SeqMaxFunction());
     addFunction(new SeqMapFunction());
     addFunction(new SeqReduceFunction());
     addFunction(new SeqFilterFunction());
@@ -337,10 +386,10 @@ public final class AviatorEvaluatorInstance {
    * Compiled Expression cache
    */
   private final ConcurrentHashMap<String/* text expression */, FutureTask<Expression>/*
-                                                                                     * Compiled
-                                                                                     * expression
-                                                                                     * task
-                                                                                     */> cacheExpressions =
+                                                                                      * Compiled
+                                                                                      * expression
+                                                                                      * task
+                                                                                      */> cacheExpressions =
       new ConcurrentHashMap<String, FutureTask<Expression>>();
 
 
@@ -351,6 +400,9 @@ public final class AviatorEvaluatorInstance {
   AviatorEvaluatorInstance() {
     this.loadLib();
     this.addFunctionLoader(ClassPathConfigFunctionLoader.getInstance());
+    for (Options opt : Options.values()) {
+      options.put(opt, opt.getDefaultValueObject());
+    }
   }
 
   /**
@@ -454,18 +506,21 @@ public final class AviatorEvaluatorInstance {
    * @param name
    * @return
    */
-  public AviatorFunction getFunction(String name) {
+  public AviatorFunction getFunction(final String name) {
     AviatorFunction function = (AviatorFunction) funcMap.get(name);
     if (function == null && functionLoaders != null) {
       for (FunctionLoader loader : functionLoaders) {
-        function = loader.onFunctionNotFound(name);
+        if (loader != null) {
+          function = loader.onFunctionNotFound(name);
+        }
         if (function != null) {
           break;
         }
       }
     }
     if (function == null) {
-      throw new ExpressionRuntimeException("Could not find function named '" + name + "'");
+      // Returns a delegate function that will try to find the function from runtime env.
+      function = new RuntimeFunctionDelegator(name);
     }
     return function;
   }
@@ -540,6 +595,28 @@ public final class AviatorEvaluatorInstance {
     }
   }
 
+  /**
+   * Returns true when the expression is in cache.
+   *
+   * @param expression
+   * @return
+   * @since 4.0.0
+   */
+  public boolean isExpressionCached(String expression) {
+    return this.getCachedExpression(expression) != null;
+  }
+
+  /**
+   * Returns the number of cached expressions.
+   *
+   * @since 4.0.0
+   * @return
+   */
+  public int getExpressionCacheSize() {
+    return this.cacheExpressions.size();
+  }
+
+
 
   /**
    * Compile a text expression to Expression object
@@ -594,14 +671,14 @@ public final class AviatorEvaluatorInstance {
     CodeGenerator codeGenerator = newCodeGenerator(cached);
     ExpressionParser parser = new ExpressionParser(this, lexer, codeGenerator);
     Expression exp = parser.parse();
-    if ((boolean) getOption(Options.TRACE_EVAL)) {
+    if (getOptionValue(Options.TRACE_EVAL).bool) {
       ((BaseExpression) exp).setExpression(expression);
     }
     return exp;
   }
 
   private int getOptimizeLevel() {
-    return getOption(Options.OPTIMIZE_LEVEL);
+    return getOptionValue(Options.OPTIMIZE_LEVEL).level;
   }
 
 
@@ -615,12 +692,12 @@ public final class AviatorEvaluatorInstance {
     switch (getOptimizeLevel()) {
       case AviatorEvaluator.COMPILE:
         ASMCodeGenerator asmCodeGenerator = new ASMCodeGenerator(this, classLoader,
-            traceOutputStream, (Boolean) getOption(Options.TRACE));
+            traceOutputStream, getOptionValue(Options.TRACE).bool);
         asmCodeGenerator.start();
         return asmCodeGenerator;
       case AviatorEvaluator.EVAL:
         return new OptimizeCodeGenerator(this, classLoader, traceOutputStream,
-            (Boolean) getOption(Options.TRACE));
+            getOptionValue(Options.TRACE).bool);
       default:
         throw new IllegalArgumentException("Unknow option " + getOptimizeLevel());
     }
@@ -668,7 +745,7 @@ public final class AviatorEvaluatorInstance {
         return compiledExpression.execute();
       }
     } else {
-      throw new ExpressionRuntimeException("Null compiled expression for " + expression);
+      throw new ExpressionNotFoundException("Null compiled expression for " + expression);
     }
   }
 
@@ -685,7 +762,7 @@ public final class AviatorEvaluatorInstance {
     if (compiledExpression != null) {
       return compiledExpression.execute(env);
     } else {
-      throw new ExpressionRuntimeException("Null compiled expression for " + expression);
+      throw new ExpressionNotFoundException("Null compiled expression for " + expression);
     }
   }
 

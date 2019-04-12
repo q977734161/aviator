@@ -17,7 +17,6 @@ package com.googlecode.aviator.runtime.function;
 
 import java.util.Map;
 import com.googlecode.aviator.AviatorEvaluatorInstance;
-import com.googlecode.aviator.exception.ExpressionRuntimeException;
 import com.googlecode.aviator.runtime.RuntimeUtils;
 import com.googlecode.aviator.runtime.type.AviatorFunction;
 import com.googlecode.aviator.runtime.type.AviatorJavaType;
@@ -45,10 +44,6 @@ public class FunctionUtils {
     String result = null;
 
     final Object value = arg.getValue(env);
-    if (value == null && arg.getAviatorType() == AviatorType.JavaType) {
-      throw new NullPointerException(
-          "There is no string named" + ((AviatorJavaType) arg).getName());
-    }
     if (value instanceof Character) {
       result = value.toString();
     } else {
@@ -66,9 +61,9 @@ public class FunctionUtils {
    */
   public static Object getJavaObject(AviatorObject arg, Map<String, Object> env) {
     if (arg.getAviatorType() != AviatorType.JavaType) {
-      throw new ExpressionRuntimeException(arg.desc(env) + " is not a javaType");
+      throw new ClassCastException(arg.desc(env) + " is not a javaType");
     }
-    return env.get(((AviatorJavaType) arg).getName());
+    return ((AviatorJavaType) arg).getValue(env);
   }
 
 
@@ -88,7 +83,7 @@ public class FunctionUtils {
   public static AviatorFunction getFunction(AviatorObject arg, Map<String, Object> env, int arity) {
     if (arg.getAviatorType() != AviatorType.JavaType
         && arg.getAviatorType() != AviatorType.Lambda) {
-      throw new ExpressionRuntimeException(arg.desc(env) + " is not a function");
+      throw new ClassCastException(arg.desc(env) + " is not a function");
     }
     // Runtime type.
     if (arg instanceof AviatorRuntimeJavaType && arg.getValue(env) instanceof AviatorFunction) {

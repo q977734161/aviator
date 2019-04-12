@@ -247,7 +247,7 @@ public class AviatorJavaType extends AviatorObject {
 
     if (env != null) {
       if (this.name.contains(".") && RuntimeUtils.getInstance(env)
-          .<Boolean>getOption(Options.ENABLE_PROPERTY_SYNTAX_SUGAR)) {
+          .getOptionValue(Options.ENABLE_PROPERTY_SYNTAX_SUGAR).bool) {
         return getProperty(env);
       }
       return env.get(this.name);
@@ -255,14 +255,47 @@ public class AviatorJavaType extends AviatorObject {
     return null;
   }
 
+  public AviatorObject setValue(AviatorObject value, Map<String, Object> env) {
+    if (this.name.contains(".")) {
+      throw new ExpressionRuntimeException("Can't assignment value to `" + this.name + "`");
+    }
+
+    if (RuntimeUtils.getInstance(env).getOptionValue(Options.DISABLE_ASSIGNMENT).bool) {
+      throw new ExpressionRuntimeException("Disabled variable assignment.");
+    }
+
+    Object v = value.getValue(env);
+    env.put(this.name, v);
+    return new AviatorRuntimeJavaType(v);
+  }
+
+  @SuppressWarnings("unchecked")
   private Object getProperty(Map<String, Object> env) {
     try {
+      String[] names = this.name.split("\\.");
+      Map<String, Object> innerEnv = env;
+      for (int i = 0; i < names.length; i++) {
+        // Fast path for nested map.
+        Object val = innerEnv.get(names[i]);
+
+        if (i == names.length - 1) {
+          return val;
+        }
+
+        // fallback to property utils
+        if (!(val instanceof Map)) {
+          return PropertyUtils.getProperty(env, this.name);
+        }
+
+        innerEnv = (Map<String, Object>) val;
+      }
       return PropertyUtils.getProperty(env, this.name);
+
     } catch (Throwable t) {
-      if (RuntimeUtils.getInstance(env).<Boolean>getOption(Options.TRACE_EVAL)) {
+      if (RuntimeUtils.getInstance(env).getOptionValue(Options.TRACE_EVAL).bool) {
         t.printStackTrace();
       }
-      if (RuntimeUtils.getInstance(env).<Boolean>getOption(Options.NIL_WHEN_PROPERTY_NOT_FOUND)) {
+      if (RuntimeUtils.getInstance(env).getOptionValue(Options.NIL_WHEN_PROPERTY_NOT_FOUND).bool) {
         return null;
       } else {
         throw new ExpressionRuntimeException("Could not find variable " + this.name, t);

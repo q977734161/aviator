@@ -1,17 +1,16 @@
 /**
  * Copyright (C) 2010 dennis zhuang (killme2008@gmail.com)
- *
+ * <p>
  * This library is free software; you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation; either version
  * 2.1 of the License, or (at your option) any later version.
- *
+ * <p>
  * This library is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Lesser General Public License for more details.
- *
+ * <p>
  * You should have received a copy of the GNU Lesser General Public License along with this program;
  * if not, write to the Free Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
  **/
 package com.googlecode.aviator.test.function;
 
@@ -20,6 +19,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 import com.googlecode.aviator.AviatorEvaluator;
+import com.googlecode.aviator.Options;
 import com.googlecode.aviator.exception.CompileExpressionErrorException;
 import com.googlecode.aviator.exception.ExpressionRuntimeException;
 import com.googlecode.aviator.exception.ExpressionSyntaxErrorException;
@@ -40,9 +41,36 @@ import junit.framework.Assert;
  * Aviator grammar test
  *
  * @author dennis
- *
  */
 public class GrammarUnitTest {
+
+  @Test
+  public void testIssue77() {
+    AviatorEvaluator.setOption(Options.ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL, true);
+    assertTrue((boolean) AviatorEvaluator.execute("'一二三'=~/.*三/"));
+    AviatorEvaluator.setOption(Options.ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL, false);
+  }
+
+  @Test
+  public void testIssue87() {
+    AviatorEvaluator.setOption(Options.ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL, true);
+    assertEquals(1, (long) AviatorEvaluator.execute("long(1.2)"));
+    AviatorEvaluator.setOption(Options.ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL, false);
+  }
+
+  @Test
+  public void testIssue92() {
+    HashMap<String, Object> env = new HashMap<>();
+    assertEquals("\\", AviatorEvaluator.execute("'\\\\'", env));
+  }
+
+  // 增加测试用例
+  @Test
+  public void testIntegralIntoDecimal() {
+    AviatorEvaluator.setOption(Options.ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL, true);
+    assertEquals(1.5D, ((BigDecimal) AviatorEvaluator.execute("3/2")).doubleValue());
+    AviatorEvaluator.setOption(Options.ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL, false);
+  }
 
   /**
    * 类型测试
@@ -1012,5 +1040,29 @@ public class GrammarUnitTest {
   @Test(expected = ExpressionSyntaxErrorException.class)
   public void test4J() {
     System.out.println(AviatorEvaluator.execute("4(ss*^^%%$$$$"));
+  }
+
+  @Test
+  public void testAssignment1() {
+    assertEquals(3, AviatorEvaluator.execute("a=1; a+2"));
+    assertEquals(5, AviatorEvaluator.execute("a=3; b=2; a+b"));
+    assertEquals(20.0, AviatorEvaluator.execute("a=3; b=2; c=a+b; c*4.0"));
+    assertEquals(6, AviatorEvaluator.execute("square = lambda(x) -> x *2 end; square(3)"));
+    assertEquals(1, AviatorEvaluator.execute("a=5;b=4.2 ; c= a > b? 1: 0; c"));
+    assertEquals(6, AviatorEvaluator.execute("add_n = lambda(x) -> lambda(y) -> x + y end end ; "
+        + "add_1 = add_n(1) ; " + "add_2 = add_n(2) ;" + " add_1(add_2(3))"));
+  }
+
+  @Test
+  public void testAssignment() {
+    AviatorEvaluator.setOption(Options.USE_USER_ENV_AS_TOP_ENV_DIRECTLY, true);
+    AviatorEvaluator.setOption(Options.PUT_CAPTURING_GROUPS_INTO_ENV, true);
+    Map<String, Object> env = new HashMap<>();
+    env.put("b", 4);
+    Object v = AviatorEvaluator.execute("'hello@4'=~/(.*)@(.*)/ ? a=$2:'not match'", env);
+    assertEquals("4", v);
+    assertTrue(env.containsKey("$2"));
+    assertTrue(env.containsKey("a"));
+    assertEquals("4", env.get("a"));
   }
 }

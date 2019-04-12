@@ -18,6 +18,7 @@ package com.googlecode.aviator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import com.googlecode.aviator.exception.ExpressionNotFoundException;
 import com.googlecode.aviator.exception.ExpressionRuntimeException;
 import com.googlecode.aviator.runtime.LambdaFunctionBootstrap;
 import com.googlecode.aviator.runtime.RuntimeUtils;
@@ -51,7 +52,7 @@ public abstract class ClassExpression extends BaseExpression {
   public LambdaFunction newLambda(Env env, String name) {
     LambdaFunctionBootstrap bootstrap = this.lambdaBootstraps.get(name);
     if (bootstrap == null) {
-      throw new ExpressionRuntimeException("Lambda " + name + " not found");
+      throw new ExpressionNotFoundException("Lambda " + name + " not found");
     }
     return bootstrap.newInstance(env);
   }
@@ -66,7 +67,7 @@ public abstract class ClassExpression extends BaseExpression {
     if (map == null) {
       map = Collections.emptyMap();
     }
-    Env env = newEnv(map);
+    Env env = genTopEnv(map);
     try {
       Object result = this.execute0(env);
       if (RuntimeUtils.isTracedEval(env)) {

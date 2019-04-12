@@ -22,12 +22,14 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import java.io.ByteArrayOutputStream;
 import java.math.MathContext;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 import com.googlecode.aviator.exception.CompileExpressionErrorException;
+import com.googlecode.aviator.exception.ExpressionRuntimeException;
 import com.googlecode.aviator.lexer.token.OperatorType;
 import com.googlecode.aviator.runtime.type.AviatorFunction;
 
@@ -54,7 +56,7 @@ public class AviatorEvaluatorInstanceUnitTest {
     try {
       AviatorEvaluator.newInstance().exec("add(3,4)");
       fail();
-    } catch (CompileExpressionErrorException e) {
+    } catch (ExpressionRuntimeException e) {
       assertTrue(true);
     }
     assertEquals(17, this.instance.execute("add(8,9)"));
@@ -62,7 +64,7 @@ public class AviatorEvaluatorInstanceUnitTest {
     try {
       AviatorEvaluator.newInstance().exec("add(1,y)", 3);
       fail();
-    } catch (CompileExpressionErrorException e) {
+    } catch (ExpressionRuntimeException e) {
       assertTrue(true);
     }
   }
@@ -158,8 +160,12 @@ public class AviatorEvaluatorInstanceUnitTest {
 
   @Test
   public void testCompileCache() {
+    assertEquals(0, this.instance.getExpressionCacheSize());
+    assertFalse(this.instance.isExpressionCached("1+3"));
     Expression exp1 = this.instance.compile("1+3", true);
     Expression exp2 = this.instance.compile("1+3", true);
+    assertEquals(1, this.instance.getExpressionCacheSize());
+    assertTrue(this.instance.isExpressionCached("1+3"));
     assertNotNull(exp1);
     assertNotNull(exp2);
     assertSame(exp1, exp2);
@@ -176,10 +182,16 @@ public class AviatorEvaluatorInstanceUnitTest {
     assertNotNull(exp1);
     assertNotNull(exp2);
     assertSame(exp1, exp2);
+    assertEquals(1, this.instance.getExpressionCacheSize());
+    assertTrue(this.instance.isExpressionCached("1+3"));
 
     this.instance.invalidateCache("1+3");
+    assertFalse(this.instance.isExpressionCached("1+3"));
+    assertEquals(0, this.instance.getExpressionCacheSize());
     Expression exp3 = this.instance.compile("1+3", true);
     assertNotSame(exp1, exp3);
+    assertEquals(1, this.instance.getExpressionCacheSize());
+    assertTrue(this.instance.isExpressionCached("1+3"));
 
     assertEquals(4, exp1.execute(null));
     assertEquals(4, exp2.execute(null));
@@ -206,6 +218,36 @@ public class AviatorEvaluatorInstanceUnitTest {
     assertEquals("hello world", this.instance.execute("a+b", env, true));
   }
 
+
+  @Test(expected = ExpressionRuntimeException.class)
+  public void testDisableAssignment() {
+    this.instance.setOption(Options.DISABLE_ASSIGNMENT, true);
+    try {
+      this.instance.execute("a=3");
+    } finally {
+      this.instance.setOption(Options.DISABLE_ASSIGNMENT, false);
+    }
+  }
+
+  @Test
+  public void testTraceEval() throws Exception {
+    this.instance.setOption(Options.TRACE_EVAL, true);
+    ByteArrayOutputStream bs = new ByteArrayOutputStream();
+    this.instance.setTraceOutputStream(bs);
+    try {
+      this.instance.execute("string.replace_all('hello','l','c') + ' world'");
+      String output = new String(bs.toByteArray());
+      assertEquals(
+          "[Aviator TRACE] Func   : string.replace_all(<String, hello>,<String, l>,<String, c>)\n"
+              + "[Aviator TRACE]          <String, hecco> + <String,  world> => <String, hecco world>\n"
+              + "[Aviator TRACE] Result : hecco world\n",
+          output);
+    } finally {
+      this.instance.setOption(Options.TRACE_EVAL, false);
+      this.instance.setTraceOutputStream(System.out);
+    }
+
+  }
 
   @Test(expected = CompileExpressionErrorException.class)
   public void compileBlankExpression1() {

@@ -106,11 +106,10 @@ public class ExpressionParser implements Parser {
     return info;
   }
 
-  /*
+  /**
    * (non-Javadoc)
    *
-   * @see com.googlecode.aviator.parser.Parser#restoreScope(com.googlecode.aviator.parser.
-   * ExpressionParser.DepthInfo)
+   * @see com.googlecode.aviator.parser.Parser#restoreScope(com.googlecode.aviator.parser.ExpressionParser.DepthInfo)
    */
   @Override
   public void restoreScope(ScopeInfo info) {
@@ -284,7 +283,11 @@ public class ExpressionParser implements Parser {
           this.rel();
           this.codeGenerator.onMatch(this.lookhead);
         } else {
-          this.reportSyntaxError("Aviator doesn't support assignment");
+          // this.back();
+          // assignment
+          this.ternary();
+          this.codeGenerator.onAssignment(this.lookhead);
+          // this.reportSyntaxError("Aviator doesn't support assignment");
         }
       } else if (this.expectChar('!')) {
         this.move(true);
@@ -754,8 +757,9 @@ public class ExpressionParser implements Parser {
 
 
   private void reportSyntaxError(String message) {
-    int index = this.lookhead != null && this.lookhead.getStartIndex() > 0
-        ? this.lookhead.getStartIndex() : this.lexer.getCurrentIndex();
+    int index =
+        this.lookhead != null && this.lookhead.getStartIndex() > 0 ? this.lookhead.getStartIndex()
+            : this.lexer.getCurrentIndex();
     throw new ExpressionSyntaxErrorException(
         "Syntax error:" + message + " at " + index + ", current token: " + this.lookhead
             + ". Parsing expression: `" + this.lexer.getScanString() + "^^`");

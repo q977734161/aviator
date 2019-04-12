@@ -5,7 +5,6 @@ import java.math.MathContext;
 import java.util.Map;
 import com.googlecode.aviator.AviatorEvaluatorInstance;
 import com.googlecode.aviator.Options;
-import com.googlecode.aviator.exception.ExpressionRuntimeException;
 import com.googlecode.aviator.runtime.type.AviatorFunction;
 import com.googlecode.aviator.runtime.type.AviatorObject;
 import com.googlecode.aviator.utils.Env;
@@ -33,8 +32,9 @@ public final class RuntimeUtils {
   }
 
   public static final MathContext getMathContext(Map<String, Object> env) {
-    return getInstance(env).getOption(Options.MATH_CONTEXT);
+    return getInstance(env).getOptionValue(Options.MATH_CONTEXT).mathContext;
   }
+
 
   public static final void printTrace(Map<String, Object> env, String msg) {
     try {
@@ -45,7 +45,7 @@ public final class RuntimeUtils {
   }
 
   public static final boolean isTracedEval(Map<String, Object> env) {
-    return (boolean) getInstance(env).getOption(Options.TRACE_EVAL);
+    return getInstance(env).getOptionValue(Options.TRACE_EVAL).bool;
   }
 
 
@@ -58,8 +58,7 @@ public final class RuntimeUtils {
         return (AviatorFunction) value;
       }
     }
-    throw new ExpressionRuntimeException(
-        "Could not cast object " + object + " into a aviator function.");
+    throw new ClassCastException("Could not cast object " + object + " into a aviator function.");
   }
 
   public static AviatorFunction getFunction(Map<String, Object> env, String name) {

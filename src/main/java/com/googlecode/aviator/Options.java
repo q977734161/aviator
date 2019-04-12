@@ -41,10 +41,14 @@ public enum Options {
    */
   TRACE,
   /**
-   * Always parsing floating-point number into BigDecial, default is false.It replaces
+   * When true, always parsing floating-point number into BigDecial, default is false.It replaces
    * {@link #ALWAYS_USE_DOUBLE_AS_DECIMAL} option.
    */
   ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL,
+  /**
+   * When true, always parsing long number into BigDecial, default is false.
+   */
+  ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL,
   /**
    * Whether to trace expression evaluating procedure, default is false.
    */
@@ -66,24 +70,137 @@ public enum Options {
    * When enable property access syntax sugar, returns nil if the property value is not found or
    * throws exception.Default value is false,disabled this behaviour.
    */
-  NIL_WHEN_PROPERTY_NOT_FOUND;
+  NIL_WHEN_PROPERTY_NOT_FOUND,
 
+  /**
+   * Whether to use user passed-in env as top level environment directly.If true, it may make side
+   * effects(such as assignment) to user passed-in env., otherwise aviator will wrap the user
+   * passed-in env and does not make any side effects into it.
+   *
+   * Default is false.
+   */
+  USE_USER_ENV_AS_TOP_ENV_DIRECTLY,
 
-  private static final Boolean TRACE_DEFAULT_VAL =
+  /**
+   * Disable variable assignment when true, default is false. You may want to disable variable
+   * assignment for security reason.
+   *
+   * @since 4.1.2
+   */
+  DISABLE_ASSIGNMENT;
+
+  private static final boolean TRACE_DEFAULT_VAL =
       Boolean.valueOf(System.getProperty("aviator.asm.trace", "false"));
-  private static final Boolean TRACE_EVAL_DEFAULT_VAL =
+  private static final boolean TRACE_EVAL_DEFAULT_VAL =
       Boolean.valueOf(System.getProperty("aviator.trace_eval", "false"));
 
+  /**
+   * The option's value union
+   *
+   * @author dennis
+   *
+   */
+  public static class Value {
+    public boolean bool;
+    public MathContext mathContext;
+    public int level;
 
-  public boolean isValidValue(Object val) {
+    public Value(boolean bool) {
+      super();
+      this.bool = bool;
+    }
+
+    public Value(MathContext mathContext) {
+      super();
+      this.mathContext = mathContext;
+    }
+
+    public Value(int level) {
+      super();
+      this.level = level;
+    }
+
+    @Override
+    public String toString() {
+      return "Value [bool=" + bool + ", mathContext=" + mathContext + ", level=" + level + "]";
+    }
+
+
+  }
+
+  /**
+   * Cast value union into java object.
+   *
+   * @param val
+   * @return
+   */
+  public Object intoObject(Value val) {
     switch (this) {
       case ALWAYS_USE_DOUBLE_AS_DECIMAL:
       case ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL:
+      case ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL:
       case TRACE_EVAL:
       case PUT_CAPTURING_GROUPS_INTO_ENV:
       case TRACE:
       case ENABLE_PROPERTY_SYNTAX_SUGAR:
       case NIL_WHEN_PROPERTY_NOT_FOUND:
+      case USE_USER_ENV_AS_TOP_ENV_DIRECTLY:
+      case DISABLE_ASSIGNMENT:
+        return val.bool;
+      case OPTIMIZE_LEVEL: {
+        return val.level;
+      }
+      case MATH_CONTEXT:
+        return val.mathContext;
+    }
+    throw new IllegalArgumentException("Fail to cast value " + val + " for option " + this);
+  }
+
+  /**
+   * Cast java object into value union.
+   *
+   * @param val
+   * @return
+   */
+  public Value intoValue(Object val) {
+    switch (this) {
+      case ALWAYS_USE_DOUBLE_AS_DECIMAL:
+      case ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL:
+      case ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL:
+      case TRACE_EVAL:
+      case PUT_CAPTURING_GROUPS_INTO_ENV:
+      case TRACE:
+      case ENABLE_PROPERTY_SYNTAX_SUGAR:
+      case NIL_WHEN_PROPERTY_NOT_FOUND:
+      case USE_USER_ENV_AS_TOP_ENV_DIRECTLY:
+      case DISABLE_ASSIGNMENT:
+        return ((boolean) val) ? TRUE_VALUE : FALSE_VALUE;
+      case OPTIMIZE_LEVEL: {
+        int level = (int) val;
+        if (level == AviatorEvaluator.EVAL) {
+          return EVAL_VALUE;
+        } else {
+          return COMPILE_VALUE;
+        }
+      }
+      case MATH_CONTEXT:
+        return new Value((MathContext) val);
+    }
+    throw new IllegalArgumentException("Fail to cast value " + val + " for option " + this);
+  }
+
+  public boolean isValidValue(Object val) {
+    switch (this) {
+      case ALWAYS_USE_DOUBLE_AS_DECIMAL:
+      case ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL:
+      case ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL:
+      case TRACE_EVAL:
+      case PUT_CAPTURING_GROUPS_INTO_ENV:
+      case TRACE:
+      case ENABLE_PROPERTY_SYNTAX_SUGAR:
+      case NIL_WHEN_PROPERTY_NOT_FOUND:
+      case USE_USER_ENV_AS_TOP_ENV_DIRECTLY:
+      case DISABLE_ASSIGNMENT:
         return val instanceof Boolean;
       case OPTIMIZE_LEVEL:
         return val instanceof Integer && (((Integer) val).intValue() == AviatorEvaluator.EVAL
@@ -94,6 +211,16 @@ public enum Options {
     return false;
   }
 
+  public static final Value FALSE_VALUE = new Value(false);
+
+  public static final Value TRUE_VALUE = new Value(true);
+
+  public static final Value DEFAULT_MATH_CONTEXT = new Value(MathContext.DECIMAL128);
+
+  public static final Value EVAL_VALUE = new Value(AviatorEvaluator.EVAL);
+
+  public static final Value COMPILE_VALUE = new Value(AviatorEvaluator.COMPILE);
+
 
   /**
    * Returns the default value of option.
@@ -101,24 +228,39 @@ public enum Options {
    * @return
    */
   public Object getDefaultValue() {
+    return this.intoObject(this.getDefaultValueObject());
+  }
+
+
+  /**
+   * Returns the default value object of option.
+   *
+   * @return
+   */
+  public Value getDefaultValueObject() {
     switch (this) {
       case ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL:
+      case ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL:
       case ALWAYS_USE_DOUBLE_AS_DECIMAL:
-        return false;
+        return FALSE_VALUE;
       case ENABLE_PROPERTY_SYNTAX_SUGAR:
-        return true;
+        return TRUE_VALUE;
       case NIL_WHEN_PROPERTY_NOT_FOUND:
-        return false;
+        return FALSE_VALUE;
       case OPTIMIZE_LEVEL:
-        return AviatorEvaluator.EVAL;
+        return EVAL_VALUE;
       case MATH_CONTEXT:
-        return MathContext.DECIMAL128;
+        return DEFAULT_MATH_CONTEXT;
       case TRACE_EVAL:
-        return TRACE_EVAL_DEFAULT_VAL;
+        return TRACE_EVAL_DEFAULT_VAL ? TRUE_VALUE : FALSE_VALUE;
       case TRACE:
-        return TRACE_DEFAULT_VAL;
+        return TRACE_DEFAULT_VAL ? TRUE_VALUE : FALSE_VALUE;
       case PUT_CAPTURING_GROUPS_INTO_ENV:
-        return true;
+        return TRUE_VALUE;
+      case USE_USER_ENV_AS_TOP_ENV_DIRECTLY:
+        return TRUE_VALUE;
+      case DISABLE_ASSIGNMENT:
+        return FALSE_VALUE;
     }
     return null;
   }

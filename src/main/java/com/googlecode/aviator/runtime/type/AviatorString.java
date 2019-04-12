@@ -59,7 +59,7 @@ public class AviatorString extends AviatorObject {
       case Long:
       case Double:
         final AviatorNumber otherNumber = (AviatorNumber) other;
-        return new AviatorString(this.lexeme + otherNumber.number);
+        return new AviatorString(this.lexeme + otherNumber.getValue(env));
       case Nil:
       case JavaType:
         return new AviatorString(this.lexeme + other.getValue(env));
@@ -126,7 +126,8 @@ public class AviatorString extends AviatorObject {
         } else if (otherJavaValue instanceof Date) {
           return this.tryCompareDate((Date) otherJavaValue);
         } else {
-          throw new ExpressionRuntimeException("Could not compare " + this + " with " + other);
+          throw new ExpressionRuntimeException(
+              "Could not compare " + this.desc(env) + " with " + other.desc(env));
         }
       case Nil:
         if (this.lexeme == null) {
@@ -135,7 +136,8 @@ public class AviatorString extends AviatorObject {
           return 1;
         }
       default:
-        throw new ExpressionRuntimeException("Could not compare " + this + " with " + other);
+        throw new ExpressionRuntimeException(
+            "Could not compare " + this.desc(env) + " with " + other.desc(env));
     }
   }
 

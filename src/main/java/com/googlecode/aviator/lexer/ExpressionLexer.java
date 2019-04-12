@@ -51,6 +51,7 @@ public class ExpressionLexer {
   private String expression;
   private MathContext mathContext;
   private boolean parseFloatIntoDecimal;
+  private boolean parseLongIntoDecimal;
 
   public ExpressionLexer(AviatorEvaluatorInstance instance, String expression) {
     this.iterator = new StringCharacterIterator(expression);
@@ -58,9 +59,12 @@ public class ExpressionLexer {
     this.symbolTable = new SymbolTable();
     this.peek = this.iterator.current();
     this.instance = instance;
-    this.mathContext = this.instance.getOption(Options.MATH_CONTEXT);
+    this.mathContext = this.instance.getOptionValue(Options.MATH_CONTEXT).mathContext;
     this.parseFloatIntoDecimal =
-        this.instance.getOption(Options.ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL);
+        this.instance.getOptionValue(Options.ALWAYS_PARSE_FLOATING_POINT_NUMBER_INTO_DECIMAL).bool;
+    this.parseLongIntoDecimal =
+        this.instance.getOptionValue(Options.ALWAYS_PARSE_INTEGRAL_NUMBER_INTO_DECIMAL).bool;
+
   }
 
   /**
@@ -104,6 +108,7 @@ public class ExpressionLexer {
   public int getCurrentIndex() {
     return this.iterator.getIndex();
   }
+
 
 
   public Token<?> scan(boolean analyse) {
@@ -242,18 +247,26 @@ public class ExpressionLexer {
       } else if (isBigInt) {
         value = new BigInteger(this.getBigNumberLexeme(sb));
       } else if (hasDot) {
-        if (this.parseFloatIntoDecimal) {
+        if (this.parseFloatIntoDecimal && sb.length() > 1) {
           value = new BigDecimal(sb.toString(), this.mathContext);
+        } else if (sb.length() == 1) {
+          // only have a dot character.
+          return new CharToken('.', startIndex);
         } else {
           value = dval;
         }
       } else {
-        // if the long value is out of range,then it must be negative,so
-        // we make it as a big integer.
-        if (lval < 0) {
-          value = new BigInteger(sb.toString());
+        if (this.parseLongIntoDecimal) {
+          // we make integral number as a BigDecimal.
+          value = new BigDecimal(sb.toString(), this.mathContext);
         } else {
-          value = lval;
+          // if the long value is out of range,then it must be negative, so
+          // we make it as a big integer.
+          if (lval < 0) {
+            value = new BigInteger(sb.toString());
+          } else {
+            value = lval;
+          }
         }
       }
       String lexeme = sb.toString();
@@ -303,18 +316,51 @@ public class ExpressionLexer {
       char left = this.peek;
       int startIndex = this.iterator.getIndex();
       StringBuilder sb = new StringBuilder();
-      char prev = this.peek;
-      while ((this.peek = this.iterator.next()) != left || prev == '\\') {
-        if (this.peek == CharacterIterator.DONE) {
-          throw new CompileExpressionErrorException("Illegal String " + sb + " at " + startIndex);
-        } else {
-          if (this.peek == left && prev == '\\') {
-            sb.setCharAt(sb.length() - 1, this.peek);
-          } else {
+      // char prev = this.peek;
+      while ((this.peek = this.iterator.next()) != left) {
+        if (this.peek == '\\') // escape
+        {
+          this.nextChar();
+          if (this.peek == CharacterIterator.DONE) {
+            throw new CompileExpressionErrorException(
+                "EOF while reading string at index: " + this.iterator.getIndex());
+          }
+          if (this.peek == left) {
             sb.append(this.peek);
+            continue;
+          }
+          switch (this.peek) {
+            case 't':
+              this.peek = '\t';
+              break;
+            case 'r':
+              this.peek = '\r';
+              break;
+            case 'n':
+              this.peek = '\n';
+              break;
+            case '\\':
+              break;
+            case 'b':
+              this.peek = '\b';
+              break;
+            case 'f':
+              this.peek = '\f';
+              break;
+            default: {
+              throw new CompileExpressionErrorException(
+                  "Unsupported escape character: \\" + this.peek);
+            }
+
           }
         }
-        prev = this.peek;
+
+        if (this.peek == CharacterIterator.DONE) {
+          throw new CompileExpressionErrorException(
+              "EOF while reading string at index: " + this.iterator.getIndex());
+        }
+
+        sb.append(this.peek);
       }
       this.nextChar();
       return new StringToken(sb.toString(), startIndex);
